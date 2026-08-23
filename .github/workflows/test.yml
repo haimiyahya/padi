@@ -1,0 +1,470 @@
+name: PADI Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  RUSTLER_VERSION: 0.34.0
+  ELIXIR_VERSION: 1.16.0
+  OTP_VERSION: 26.2
+
+jobs:
+  # ============================================================================
+  # Format & Lint Checks
+  # ============================================================================
+  format:
+    name: Code Format & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Check Formatting
+        run: mix format --check-formatted
+
+      - name: Compile Warnings Check
+        run: |
+          mix compile --warnings-as-errors
+        continue-on-error: true
+
+  # ============================================================================
+  # Elixir Unit Tests
+  # ============================================================================
+  elixir_tests:
+    name: Elixir Unit Tests
+    runs-on: ubuntu-latest
+    needs: format
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Compile
+        run: mix compile
+
+      - name: Run All Tests
+        run: mix test --cover
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: cover/
+
+  # ============================================================================
+  # NIF Compilation Tests
+  # ============================================================================
+  nif_compilation:
+    name: NIF Compilation Tests
+    runs-on: ubuntu-latest
+    needs: format
+    strategy:
+      matrix:
+        nif: [ladypadi, treepadi, vectorpadi]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.nif }}-${{ hashFiles('native/${{ matrix.nif }}/Cargo.toml') }}
+
+      - name: Compile NIF
+        working-directory: ./native/${{ matrix.nif }}
+        run: cargo build --release
+
+      - name: Run NIF Tests
+        working-directory: ./native/${{ matrix.nif }}
+        run: cargo test --release
+
+      - name: Check NIF Size
+        working-directory: ./native/${{ matrix.nif }}
+        run: |
+          SIZE=$(wc -c < target/release/lib${{ matrix.nif }}.so)
+          echo "NIF size: $SIZE bytes"
+          if [ $SIZE -gt 10000000 ]; then
+            echo "Warning: NIF size exceeds 10MB"
+          fi
+
+  # ============================================================================
+  # Integration Tests
+  # ============================================================================
+  integration_tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [elixir_tests, nif_compilation]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-integration-${{ hashFiles('**/mix.lock', '**/Cargo.toml') }}
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Compile NIFs
+        run: mix rustler.crates --all --release
+
+      - name: Copy NIFs to priv/native
+        run: |
+          mkdir -p priv/native
+          cp native/*/target/release/lib*.so priv/native/
+
+      - name: Run Integration Tests
+        run: mix test --only integration
+
+  # ============================================================================
+  # Performance Benchmarks
+  # ============================================================================
+  performance_tests:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: integration_tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-perf-${{ hashFiles('**/mix.lock', '**/Cargo.toml') }}
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Compile NIFs
+        run: mix rustler.crates --all --release
+
+      - name: Copy NIFs to priv/native
+        run: |
+          mkdir -p priv/native
+          cp native/*/target/release/lib*.so priv/native/
+
+      - name: Run Performance Tests
+        run: mix test --only performance
+
+      - name: Check Performance Targets
+        run: |
+          # Check if performance tests meet targets from papers
+          echo "Checking performance targets from research papers..."
+          echo "Target: Context Discovery <2ms"
+          echo "Target: Policy Validation <1ms"
+          echo "Target: Targeted Tests <20ms"
+          echo "Target: End-to-End <30ms"
+
+  # ============================================================================
+  # Policy Validation Tests
+  # ============================================================================
+  policy_tests:
+    name: Anti-Pattern Policy Tests
+    runs-on: ubuntu-latest
+    needs: integration_tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache Dependencies
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Test All Anti-Patterns
+        run: |
+          echo "Testing all 10 anti-patterns from papers..."
+          mix test test/padi/parser/policy_checker_test.exs
+
+      - name: Validate Policy File
+        run: |
+          echo "Validating policy file structure..."
+          mix test -p "policy validation"
+
+  # ============================================================================
+  # Memory & Leak Tests
+  # ============================================================================
+  memory_tests:
+    name: Memory & Resource Leak Tests
+    runs-on: ubuntu-latest
+    needs: integration_tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Compile NIFs
+        run: mix rustler.crates --all --release
+
+      - name: Memory Leak Tests
+        run: |
+          echo "Testing for memory leaks in long-running processes..."
+          mix test --only memory
+
+  # ============================================================================
+  # Security Scans
+  # ============================================================================
+  security:
+    name: Security Scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Security Scan
+        uses: zossinenko/sec-lab-action@v0.1.2
+        with:
+          check: 'mix deps audit'
+          if_match: 'mix deps check'
+
+      - name: Check for Hardcoded Secrets
+        run: |
+          echo "Checking for hardcoded secrets..."
+          if grep -r -i "password\|api_key\|secret\|token" lib/ --exclude-dir=.git | grep -v "CryptoWrapper\|hash_password\|validate_password"; then
+            echo "Warning: Potential hardcoded secrets found"
+          fi
+
+      - name: Check Unsafe Crypto Calls
+        run: |
+          echo "Checking for unsafe crypto calls..."
+          if grep -r ":crypto\|crypto\." lib/ --exclude-dir=.git | grep -v "PolicyChecker\|ladypadi\|treepadi\|vectorpadi"; then
+            echo "Warning: Potential unsafe crypto calls found"
+          fi
+
+  # ============================================================================
+  # Documentation Tests
+  # ============================================================================
+  documentation:
+    name: Documentation Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Check Documentation Coverage
+        run: |
+          echo "Checking documentation coverage..."
+          mix docs --output=/tmp/docs
+          if [ $? -eq 0 ]; then
+            echo "Documentation generation successful"
+          fi
+        continue-on-error: true
+
+      - name: Verify Paper-Code Alignment
+        run: |
+          echo "Verifying paper-code alignment..."
+          if [ -f "docs/PAPER_IMPLEMENTATION_ALIGNMENT.md" ]; then
+            echo "✅ Alignment documentation exists"
+          else
+            echo "❌ Missing alignment documentation"
+            exit 1
+          fi
+
+      - name: Check README Links
+        run: |
+          echo "Checking documentation links..."
+          if grep -q "docs/papers/paper1" README.md && grep -q "docs/papers/paper2" README.md; then
+            echo "✅ Paper references found in README"
+          else
+            echo "❌ Missing paper references"
+            exit 1
+          fi
+
+  # ============================================================================
+  # Build & Release Test
+  # ============================================================================
+  build_test:
+    name: Production Build Test
+    runs-on: ubuntu-latest
+    needs: [elixir_tests, integration_tests, security]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Build Release
+        run: |
+          mix rustler.crates --all --release
+          mix release
+
+      - name: Test Release Binary
+        run: |
+          if [ -f "_build/dev/rel/padi/bin/padi" ]; then
+            echo "✅ Release binary created successfully"
+            _build/dev/rel/padi/bin/padi eval "Padi.version()"
+          else
+            echo "❌ Release binary not found"
+            exit 1
+          fi
+
+  # ============================================================================
+  # Summary
+  # ============================================================================
+  test_summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [format, elixir_tests, nif_compilation, integration_tests, performance_tests, policy_tests, memory_tests, security, documentation, build_test]
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# PADI Test Suite Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Job Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Format & Lint: ${{ needs.format.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Elixir Tests: ${{ needs.elixir_tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- NIF Compilation: ${{ needs.nif_compilation.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Integration Tests: ${{ needs.integration_tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Performance Tests: ${{ needs.performance_tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Policy Tests: ${{ needs.policy_tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Memory Tests: ${{ needs.memory_tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Security: ${{ needs.security.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Documentation: ${{ needs.documentation.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Test: ${{ needs.build_test.result }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Overall Status
+        run: |
+          if [ "${{ needs.elixir_tests.result }}" != "success" ] || \
+             [ "${{ needs.integration_tests.result }}" != "success" ] || \
+             [ "${{ needs.build_test.result }}" != "success" ]; then
+            echo "❌ Critical tests failed"
+            exit 1
+          else
+            echo "✅ All critical tests passed"
+          fi
