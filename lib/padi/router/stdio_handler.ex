@@ -69,9 +69,20 @@ defmodule Padi.Router.StdioHandler do
     end
   end
 
+  def parse_request(json_charlist) when is_list(json_charlist) do
+    # Handle charlists (e.g., from ~s sigil without interpolation)
+    parse_request(List.to_string(json_charlist))
+  end
+
   @doc """
   Format a response map into a JSON-RPC response string.
+  Accepts either a plain result map or a {:ok, response} tuple from InterrogationRouter.
   """
+  def format_response(id, {:ok, response}) when is_map(response) do
+    # Response is already a formatted envelope from InterrogationRouter
+    Jason.encode!(response)
+  end
+
   def format_response(id, result) when is_map(result) do
     response = Padi.Protocol.Messages.response_envelope(id, result)
     Jason.encode!(response)

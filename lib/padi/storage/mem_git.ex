@@ -2,9 +2,11 @@ defmodule Padi.Storage.MemGit do
   @moduledoc """
   Tier 4: Temporal Lineage (MemGit)
 
-  Provides in-memory git history analysis with ~100μs diff lookup.
+  Provides in-memory git history analysis with ~100μs diff lookup and
+  sophisticated async persistence for large-scale projects.
 
-  Features:
+  ## Features
+
   - Parse git repository structure
   - Commit metadata extraction
   - File history tracking
@@ -12,11 +14,37 @@ defmodule Padi.Storage.MemGit do
   - Comment-stripped diff extraction for historical debt analysis
   - **Async persistence with 10-second periodic flushing**
 
-  Persistence:
-  - Automatic flushing every 10 seconds when data has changed
+  ## Persistence Architecture
+
+  The persistence system is designed for handling large projects with minimal
+  performance impact:
+
+  ### Automatic Background Flushing
+  - Flushes to durable storage every 10 seconds when data has changed
+  - Uses dirty flag tracking to avoid unnecessary disk writes
+  - Atomic writes using temp file + rename pattern for crash resistance
   - Efficient binary serialization with zlib compression
-  - Background load on startup (non-blocking)
-  - Dirty flag tracking to avoid unnecessary disk writes
+
+  ### Non-Blocking Operation
+  - Loads persisted state asynchronously on startup (doesn't block initialization)
+  - Background flushing doesn't interfere with query/mutation operations
+  - Statistics tracking for monitoring persistence health
+
+  ### Configuration
+  - Default persistence dir: `~/.padi/memgit/`
+  - Customizable via `PADI_PERSISTENCE_DIR` environment variable
+  - State file: `memgit_state.bin` (compressed binary format)
+
+  ### API
+
+  ```elixir
+  # Get persistence statistics
+  MemGit.get_persistence_stats()
+  # => %{total_flushes: 42, last_flush_time: ..., dirty: false, ...}
+
+  # Force immediate flush
+  MemGit.force_flush()
+  ```
 
   This is the fourth tier of the 4-tier knowledge engine.
   """

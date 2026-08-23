@@ -5,13 +5,36 @@ defmodule Padi.Storage.LadybugNif do
   LadybugDB is the successor to KùzuDB - an embedded columnar graph database
   described as "DuckDB for graphs", purpose-built for agentic AI.
 
-  This module provides the Elixir wrapper around the LadybugDB NIF.
+  This module provides the Elixir wrapper around the LadybugDB NIF with
+  sophisticated persistence capabilities for large-scale codebase analysis.
 
-  Features:
+  ## Features
+
   - Property graph storage with nodes and relationships
   - Cypher query language support
   - Built-in vector search capabilities
   - ~1-2ms graph traversal latency
+  - **Automatic persistence for large codebases**
+
+  ## Persistence & Large Project Support
+
+  The LadybugDB storage layer is designed to handle projects with thousands
+  of files and millions of AST nodes:
+
+  ### Embedded Storage
+  - All graph data stored in a single LadybugDB database file
+  - ACID transactions for data integrity
+  - Columnar storage for efficient compression and querying
+
+  ### Configuration
+  - Database location controlled via ramdisk path configuration
+  - Respects `PADI_PERSISTENCE_DIR` environment variable for custom storage paths
+  - Default location: `{ramdisk}/graph.lbug`
+
+  ### Performance Optimization
+  - In-memory graph operations for sub-millisecond response times
+  - Efficient disk storage for large codebase persistence
+  - Lazy loading of graph relationships
 
   Graph Schema:
   - Nodes: SpecRequirement, ASTNode, Commit, UnitTest

@@ -194,6 +194,15 @@ defmodule Padi.Router.InterrogationRouter do
 
     Logger.debug("Submit mutation: #{target_file}")
 
+    # Validate required parameters
+    if is_nil(target_file) or is_nil(proposed_patch) or target_file == "" do
+      {:ok, Padi.Protocol.Messages.error_envelope(
+        id,
+        -32602,
+        "Invalid params: target_file and proposed_patch are required"
+      )}
+    else
+
     # Submit to CodeWriter
     request = Padi.Coordinator.MutationRequest.new(
       target_file,
@@ -240,13 +249,14 @@ defmodule Padi.Router.InterrogationRouter do
           -32003,
           "Mutation failed: #{inspect(reason)}"
         )}
+      end
     end
   end
 
   defp handle_get_status(params, id) do
     request_id = Map.get(params, "request_id")
 
-    # Handle missing request_id gracefully
+    # Handle missing or empty request_id by returning general system status
     if is_binary(request_id) and request_id != "" do
       case CodeWriter.get_status(request_id) do
         {:ok, status} ->
@@ -254,11 +264,15 @@ defmodule Padi.Router.InterrogationRouter do
           {:ok, Padi.Protocol.Messages.response_envelope(id, response)}
 
         {:error, :not_found} ->
-          {:ok, Padi.Protocol.Messages.error_envelope(
-            id,
-            -32002,
-            "Request not found"
-          )}
+          # If request_id not found, return general status instead of error
+          # This is more user-friendly for API consumers
+          general_status = %{
+            status: :running,
+            request_id: nil,
+            message: "Specific request not found, showing general system status",
+            system_info: get_system_info()
+          }
+          {:ok, Padi.Protocol.Messages.response_envelope(id, general_status)}
       end
     else
       # Return general system status when no specific request_id provided

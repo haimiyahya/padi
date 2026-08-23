@@ -137,6 +137,52 @@ This paper introduces the Conversational Codebase Protocol ("Code That Can Talk"
 | 3 | Vector Store | Semantic intent matching (HNSW) | ~1ms |
 | 4 | MemGit | Git lineage and commit history | ~100μs |
 
+## Persistence & Durable Storage
+
+PADI uses a sophisticated async persistence system to handle large projects efficiently:
+
+### Automatic Background Persistence
+
+- **10-Second Periodic Flushing**: Changes are automatically flushed to durable storage every 10 seconds
+- **Dirty Flag Tracking**: Only writes to disk when actual changes have occurred
+- **Atomic Operations**: Uses temp file + rename for safe, crash-resistant writes
+- **Efficient Compression**: zlib compression reduces storage footprint
+- **Non-Blocking Startup**: Loads persisted state asynchronously on startup
+
+### Persistence Locations
+
+- **MemGit State**: `~/.padi/memgit/memgit_state.bin` (git commit history and file lineage)
+- **LadybugDB Graph**: Configurable via `PADI_PERSISTENCE_DIR` environment variable
+- **Configuration**: All persistence locations respect `PADI_PERSISTENCE_DIR` for custom paths
+
+### Persistence Statistics
+
+```elixir
+# Get persistence statistics
+Padi.Storage.MemGit.get_persistence_stats()
+# Returns: %{
+#   total_flushes: 42,
+#   last_flush_time: 1699123456789,
+#   last_flush_size: 12345,
+#   total_bytes_written: 518420,
+#   load_time: 15,
+#   dirty: false,
+#   current_data_size: 125000
+# }
+
+# Force immediate flush
+Padi.Storage.MemGit.force_flush()
+```
+
+### Large Project Support
+
+The async persistence architecture enables PADI to handle very large codebases:
+
+- **Millions of Commits**: Efficient git history indexing with lazy loading
+- **Thousands of Files**: Fast graph traversal without loading everything into memory
+- **Incremental Updates**: Only dirty data is flushed, minimizing disk I/O
+- **Background Operations**: Persistence doesn't block query or mutation operations
+
 ## Quick Start
 
 ### Prerequisites
