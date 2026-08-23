@@ -14,6 +14,10 @@ defmodule Padi.Application do
     children = [
       # Phase 0: Persistence Layer (must start first for state loading)
       Padi.Storage.PersistenceManager,
+      Padi.Storage.GraphPersistence,
+      Padi.Storage.ChangeDetector,
+      Padi.Storage.CloudBackup,
+      Padi.LLM.LLMClient,
 
       # Phase 1: Storage & Cache Tier
       Padi.Storage.EtsRegistry,
@@ -37,10 +41,10 @@ defmodule Padi.Application do
     opts = [strategy: :one_for_one, name: Padi.Supervisor]
 
     case Supervisor.start_link(children, opts) do
-      {:ok, _pid} = sup ->
+      {:ok, pid} = sup ->
         # Load persisted state after all components are ready
         load_persisted_state()
-        {:ok, sup}
+        sup
 
       error ->
         error

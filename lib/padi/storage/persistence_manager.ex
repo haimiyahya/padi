@@ -105,7 +105,7 @@ defmodule Padi.Storage.PersistenceManager do
 
     start_time = System.monotonic_time(:millisecond)
 
-    result = case do_complete_save(state) do
+    case do_complete_save(state) do
       :ok ->
         new_stats = %{state.stats |
           last_save_time: System.system_time(:millisecond),
@@ -121,8 +121,6 @@ defmodule Padi.Storage.PersistenceManager do
         Logger.error("Failed to save complete state: #{inspect(reason)}")
         {:reply, {:error, reason}, state}
     end
-
-    {:reply, result, state}
   end
 
   def handle_call(:load_state, _from, state) do
@@ -130,7 +128,7 @@ defmodule Padi.Storage.PersistenceManager do
 
     start_time = System.monotonic_time(:millisecond)
 
-    result = case do_load_state(state) do
+    case do_load_state(state) do
       {:ok, vectors_loaded} ->
         new_stats = %{state.stats |
           vectors_loaded: vectors_loaded,
