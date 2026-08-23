@@ -26,6 +26,7 @@ defmodule Padi.Router.InterrogationRouter do
   alias Padi.Parser.TreeSitter
   alias Padi.Coordinator.CodeWriter
   alias Padi.Compiler.TestImpact
+  alias Padi.Tools.ToolRegistry
 
   # ============================================================================
   # Public API
@@ -106,6 +107,14 @@ defmodule Padi.Router.InterrogationRouter do
 
   defp do_handle_method("codebase/get_history", params, id) do
     handle_get_history(params, id)
+  end
+
+  defp do_handle_method("tools/execute", params, id) do
+    handle_tool_execute(params, id)
+  end
+
+  defp do_handle_method("tools/list", params, id) do
+    handle_tool_list(params, id)
   end
 
   defp do_handle_method(method, _params, id) do
@@ -417,6 +426,84 @@ defmodule Padi.Router.InterrogationRouter do
       _ ->
         "# Code template"
     end
+  end
+
+  defp handle_tool_execute(params, id) do
+    tool_name = Map.get(params, "tool")
+    args = Map.get(params, "args", [])
+    timeout = Map.get(params, "timeout")
+
+    Logger.debug("Execute tool: #{tool_name} with args: #{inspect(args)}")
+
+    # Convert tool name string to atom
+    tool_atom = case is_binary(tool_name) do
+      true -> String.to_existing_atom(tool_name)
+      false -> tool_name
+    end
+
+    # Build execution options
+    opts = []
+    opts = if timeout, do: [{:timeout, timeout} | opts], else: opts
+
+    # Execute the tool
+    case ToolRegistry.execute_tool(tool_atom, args, opts) do
+      {:ok, result} ->
+        response = %{
+          "tool" => tool_name,
+          "success" => result.success,
+          "exit_code" => result.exit_code,
+          "output" => result.output,
+          "duration_ms" => result.duration_ms
+        }
+
+        {:ok, Padi.Protocol.Messages.response_envelope(id, response)}
+
+      {:error, :tool_not_found} ->
+        {:ok, Padi.Protocol.Messages.error_envelope(
+          id,
+          -32004,
+          "Tool not found"
+        )}
+
+      {:error, {:permission_denied, permission}} ->
+        {:ok, Padi.Protocol.Messages.error_envelope(
+          id,
+          -32005,
+          "Permission denied - " <> Atom.to_string(permission) <> " permission required"
+        )}
+
+      {:error, reason} ->
+        {:ok, Padi.Protocol.Messages.error_envelope(
+          id,
+          -32006,
+          "Tool execution failed"
+        )}
+    end
+  rescue
+    ArgumentError ->
+      {:ok, Padi.Protocol.Messages.error_envelope(
+        id,
+        -32004,
+        "Tool not found"
+      )}
+  end
+
+  defp handle_tool_list(params, id) do
+    category = Map.get(params, "category")
+
+    Logger.debug("List tools #{if category, do: "in category: #{category}", else: "(all)"}")
+
+    tools = case category do
+      nil -> ToolRegistry.list_tools()
+      cat -> ToolRegistry.list_tools(String.to_existing_atom(cat))
+    end
+
+    response = %{
+      "tools" => tools,
+      "total" => length(tools)
+    }
+
+    {:ok, Padi.Protocol.Messages.response_envelope(id, response)}
   end
 
   defp suggest_location(intent) do

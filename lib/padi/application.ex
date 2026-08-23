@@ -34,7 +34,10 @@ defmodule Padi.Application do
       # Phase 3: Single-Writer Mutation Engine
       Padi.Coordinator.CodeWriter,
 
-      # Phase 4: Interrogation & API Gateway
+      # Phase 4: Tool Execution System
+      Padi.Tools.ToolRegistry,
+
+      # Phase 5: Interrogation & API Gateway
       Padi.Router.InterrogationRouter
     ]
 
