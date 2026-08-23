@@ -17,6 +17,52 @@ PADI transforms this into an **Insider System**:
 - **Deterministic Single-Writer** - All edits pass through a serialized gatekeeper with <1ms policy validation
 - **Single-Turn Convergence** - Pre-validated templates and targeted test analysis ensure 90%+ pass rate
 
+## 🚀 Getting Started (New Users Start Here!)
+
+### First-Time User? Start Here!
+
+**📘 [Getting Started Guide](docs/GETTING_STARTED.md)** - Your complete onboarding experience
+- Installation in 2 minutes
+- Scanning your existing repo (what to expect, how long it takes)
+- First conversation examples
+- Performance and token usage expectations
+
+**📝 [Usage Examples](docs/USAGE_EXAMPLES.md)** - Real conversation examples
+- "Build me a calculator" - See how PADI extends existing code
+- "School management system" - Complex system building
+- "Fix the authentication bug" - Bug fixing with context
+- Performance optimization examples
+- Understanding your own code
+
+**⏱️ What to Expect:**
+- ✅ **Installation:** 2-3 minutes, zero tokens
+- ✅ **Scanning existing repo:** 1-30 minutes (depending on size), zero tokens
+- ✅ **First conversation:** Immediate response, ~1,500 tokens vs 50,000+ traditional
+- ✅ **Performance:** All operations under 30ms, most under 2ms
+
+### Quick Start Commands
+
+```bash
+# Clone and install
+git clone https://github.com/haimiyahya/padi.git
+cd padi
+mix deps.get
+mix rustler.crates --all --release
+
+# Test it works
+mix test
+
+# Scan your existing repo
+cd your-existing-repo
+padi scan . --output padi_index
+
+# Start the conversation
+padi server start
+echo "What does my codebase do?" | padi query
+```
+
+**See [Getting Started](docs/GETTING_STARTED.md) for detailed walkthrough!**
+
 ## 📚 Research Foundation
 
 PADI is the real-world implementation of academic research on autonomous software engineering infrastructure:
