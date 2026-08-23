@@ -17,7 +17,31 @@ PADI transforms this into an **Insider System**:
 - **Deterministic Single-Writer** - All edits pass through a serialized gatekeeper with <1ms policy validation
 - **Single-Turn Convergence** - Pre-validated templates and targeted test analysis ensure 90%+ pass rate
 
-## Architecture
+## 📚 Research Foundation
+
+PADI is the real-world implementation of academic research on autonomous software engineering infrastructure:
+
+### **Paper 1: The Cybernetic BEAM Harness**
+*System Infrastructure & Execution Runtime*
+
+This paper introduces the theoretical foundation for PADI's zero-disk, sub-millisecond control plane architecture. It demonstrates:
+
+- **1,500× acceleration** in context discovery latency
+- **Sub-20ms targeted unit test execution** via AST-driven impact analysis
+- **95% reduction** in token consumption per edit cycle
+- **90%+ first-turn code completion rates**
+
+**Key Innovations:**
+- Single-Writer Coordinator pattern for deterministic mutations
+- RAM disk workspace (tmpfs) + MemGit for zero-disk operations
+- Pre-flight AST policy enforcement with instant rejection
+- Targeted Test Impact Analysis (TIA) for surgical validation
+
+📖 **[Read Full Paper →](docs/papers/paper1-cybernetic-beam-harness.md)**
+
+> *"This paper demonstrates that software repositories can evolve from passive file structures into self-defending, highly responsive control systems."*
+
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
