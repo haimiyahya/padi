@@ -39,7 +39,25 @@ This paper introduces the theoretical foundation for PADI's zero-disk, sub-milli
 
 📖 **[Read Full Paper →](docs/papers/paper1-cybernetic-beam-harness.md)**
 
-> *"This paper demonstrates that software repositories can evolve from passive file structures into self-defending, highly responsive control systems."*
+### **Paper 2: Conversational Codebases**
+*Interface & Institutional Memory*
+
+This paper introduces the Conversational Codebase Protocol ("Code That Can Talk"), replacing text-based inspection with intent-driven structural negotiation. It demonstrates:
+
+- **96.2% reduction** in token consumption per task
+- **92% first-turn completion rate** vs 32% traditional
+- **<0.5% historical regression rate** vs 18.4% traditional
+- **Sub-2ms** architectural intent queries
+
+**Key Innovations:**
+- Multi-tier knowledge graph (Property Graph + Vector Index + Temporal Memory)
+- Intent negotiation with pre-validated templates
+- Historical reflection and institutional memory via MemGit
+- JSON-RPC 2.0 conversational interface
+
+📖 **[Read Full Paper →](docs/papers/paper2-conversational-codebases.md)**
+
+> *"These papers demonstrate that software repositories can evolve from passive file structures into self-defending, highly responsive control systems that can converse about their own architecture and history."*
 
 ### Architecture
 

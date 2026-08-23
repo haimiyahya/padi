@@ -20,6 +20,22 @@ This paper introduces the theoretical foundation for PADI's zero-disk, sub-milli
 - Pre-flight AST policy enforcement with instant rejection
 - Targeted Test Impact Analysis (TIA) for surgical validation
 
+### [Paper 2: Conversational Codebases](papers/paper2-conversational-codebases.md)
+**Interface & Institutional Memory**
+
+This paper introduces the Conversational Codebase Protocol ("Code That Can Talk"), replacing text-based inspection with intent-driven structural negotiation. It demonstrates:
+
+- **96.2% reduction** in token consumption per task
+- **92% first-turn completion rate** vs 32% traditional
+- **<0.5% historical regression rate** vs 18.4% traditional
+- **Sub-2ms** architectural intent queries
+
+**Key Concepts Covered:**
+- Multi-tier knowledge graph (Property Graph + Vector Index + Temporal Memory)
+- Intent negotiation with pre-validated templates
+- Historical reflection and institutional memory via MemGit
+- JSON-RPC 2.0 conversational interface
+
 ## 🚀 Quick Start
 
 ### Installation
