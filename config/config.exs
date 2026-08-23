@@ -4,6 +4,13 @@ import Config
 config :padi, :ramdisk,
   path: System.get_env("PADI_RAMDISK_PATH", "/tmp/padi_ramdisk")
 
+# Persistence configuration
+config :padi,
+  persistence_dir: System.get_env("PADI_PERSISTENCE_DIR") || Path.expand("~/.padi"),
+  policy_file: System.get_env("PADI_POLICY_FILE") || Path.join(["#{__DIR__}", "../priv/.padi-policy.json"]),
+  cache_size: 1000,
+  log_level: System.get_env("PADI_LOG_LEVEL") || :info
+
 # LadybugDB configuration
 config :padi, :ladybug,
   db_path: Path.join([
@@ -26,3 +33,8 @@ config :padi, :vector_store,
 config :padi, :json_rpc,
   transport: :stdio,
   max_request_size: 10_485_760  # 10MB
+
+# Network configuration (for future TCP transport)
+config :padi, :network,
+  host: System.get_env("PADI_HOST") || "localhost",
+  port: System.get_env("PADI_PORT") || 8080

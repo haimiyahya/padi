@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PadiPolicyConfig",
+  "version": "1.0.0",
+  "description": "PADI security and quality policy configuration. Copy this file to .padi-policy.json and customize.",
+  "anti_patterns": [
+    {
+      "id": "AP-001",
+      "name": "no_debug_prints",
+      "description": "Reject debug print statements in committed code",
+      "target_ast_pattern": "CallExpression[callee='IO.inspect' | callee='IO.puts' | callee='print' | callee='puts']",
+      "action": "reject",
+      "reason": "Debug print statements should not be committed to production code",
+      "recommendation": "Use proper logging (Logger.debug/info/warn/error) instead"
+    },
+    {
+      "id": "AP-002",
+      "name": "no_raw_crypto_calls",
+      "description": "Reject direct crypto library calls",
+      "target_ast_pattern": "CallExpression[callee=':crypto.hash' | callee=':crypto.encrypt' | callee=':crypto.decrypt']",
+      "action": "reject",
+      "reason": "Direct calls to low-level crypto functions are insecure without proper configuration",
+      "recommendation": "Use CryptoWrapper library which handles key derivation and algorithm selection securely"
+    },
+    {
+      "id": "AP-003",
+      "name": "no_hardcoded_secrets",
+      "description": "Reject hardcoded API keys and secrets",
+      "target_ast_pattern": "StringLiteral[value=/^(sk_|pk_|api_|secret_|password_)/i]",
+      "action": "reject",
+      "reason": "Hardcoded API keys, tokens, or secrets pose security risks",
+      "recommendation": "Use environment variables or secure vault services for credentials"
+    },
+    {
+      "id": "AP-004",
+      "name": "require_docstrings",
+      "description": "Warn about missing documentation on public functions",
+      "target_ast_pattern": "FunctionDefinition[public=true][docstring=]",
+      "action": "warn",
+      "reason": "Public functions should have documentation for better code maintainability",
+      "recommendation": "Add @doc decorator with function description and parameter documentation"
+    },
+    {
+      "id": "AP-005",
+      "name": "no_todo_comments",
+      "description": "Warn about TODO comments in production code",
+      "target_ast_pattern": "Comment[value=/TODO|FIXME|XXX/i]",
+      "action": "warn",
+      "reason": "TODO comments indicate incomplete work that should be addressed",
+      "recommendation": "Create proper issues in your tracking system and remove TODO comments from committed code"
+    }
+  ]
+}
