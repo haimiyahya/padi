@@ -6,7 +6,7 @@ defmodule Padi.CLI.NLPParser do
   Supports various phrasings and intents for common development operations.
   """
 
-  @type intent :: :test | :build | :run | :install | :clean | :help | :status | :exit | :unknown
+  @type intent :: :test | :build | :run | :install | :clean | :help | :status | :exit | :add_feature | :fix_bug | :refactor | :query_codebase | :modify_code | :unknown
   @type parsed_command :: %{intent: intent(), args: [String.t()], raw: String.t()}
 
   # Intent patterns with regex and keyword matching
@@ -82,6 +82,55 @@ defmodule Padi.CLI.NLPParser do
       ~r/i'?m\s+done/i,
       ~r/that'?s\s+(?:all|enough)/i,
       ~r/stop\s+(?:the\s+)?(?:cli|app)/i
+    ],
+
+    # Code change intents - these require integration with codebase mutation system
+    add_feature: [
+      ~r/add\s+(?:a\s+)?(?:new\s+)?(?:function|feature|capability|method)/i,
+      ~r/implement\s+(?:a\s+)?(?:new\s+)?(?:function|feature|capability)/i,
+      ~r/create\s+(?:a\s+)?(?:new\s+)?(?:function|method)/i,
+      ~r/add\s+(?:multiplication|division|addition|subtraction)/i,
+      ~r/add\s+\w+\s+functionality/i,
+      ~r/can\s+(?:you\s+)?(?:you\s+)?(?:add|create|implement)\s+/i,
+      ~r/i\s+need\s+(?:a\s+)?\w+\s+function/i,
+      ~r/\w+\s+(?:function|feature|capability)\s+(?:please|needed|required)/i
+    ],
+
+    fix_bug: [
+      ~r/fix\s+(?:the\s+)?(?:bug|issue|problem|error)/i,
+      ~r/repair\s+(?:the\s+)?(?:bug|issue)/i,
+      ~r/(?:debug|resolve)\s+(?:the\s+)?(?:issue|problem)/i,
+      ~r/there'?s\s+(?:a\s+)?bug\s+(?:in|with)\s+/i,
+      ~r/something\s+(?:is\s+)?(?:broken|not\s+working)/i,
+      ~r/error\s+(?:in|when|during)\s+/i
+    ],
+
+    refactor: [
+      ~r/refactor\s+(?:the\s+)?(?:code|function|method|module)/i,
+      ~r/restructure\s+(?:the\s+)?(?:code|architecture)/i,
+      ~r/clean\s+up\s+(?:the\s+)?(?:code|implementation)/i,
+      ~r/improve\s+(?:the\s+)?(?:code|structure|design)/i,
+      ~r/optimize\s+(?:the\s+)?(?:code|performance)/i,
+      ~r/simplify\s+(?:the\s+)?(?:code|logic)/i
+    ],
+
+    modify_code: [
+      ~r/change\s+(?:the\s+)?(?:code|implementation|logic)/i,
+      ~r/update\s+(?:the\s+)?(?:code|function|method)/i,
+      ~r/modify\s+(?:the\s+)?(?:code|behavior|implementation)/i,
+      ~r/alter\s+(?:the\s+)?(?:functionality|behavior)/i,
+      ~r/rewrite\s+(?:the\s+)?(?:code|function|method)/i
+    ],
+
+    query_codebase: [
+      ~r/what\s+(?:functions|capabilities|features)\s+(?:do\s+)?(?:we\s+)?(?:have|exist)/i,
+      ~r/show\s+me\s+(?:what\s+)?(?:we\s+)?have/i,
+      ~r/how\s+(?:does\s+)?(?:the\s+)?(?:code|project)\s+work/i,
+      ~r/explain\s+(?:the\s+)?(?:code|system|architecture)/i,
+      ~r/what\s+(?:can|does)\s+\w+\s+(?:do|contain)/i,
+      ~r/tell\s+me\s+about\s+(?:the\s+)?(?:code|project)/i,
+      ~r/do\s+(?:we\s+)?(?:have|support)\s+/i,
+      ~r/is\s+there\s+(?:a\s+)?\w+\s+(?:function|method|feature)/i
     ]
   ]
 
@@ -168,6 +217,14 @@ defmodule Padi.CLI.NLPParser do
     Exit:
       • "exit" / "quit" / "bye" / "I'm done"
 
+    Code Generation (NEW):
+      • "add multiplication functionality" → implements multiply function
+      • "create a user authentication system" → generates auth code
+      • "add error handling to the API" → adds error handling
+      • "refactor the database layer" → restructures database code
+      • "fix the login bug" → fixes issues
+      • "what functions do we have?" → queries codebase capabilities
+
     Project Support:
       • Elixir (mix.exs)
       • Rust (Cargo.toml)
@@ -179,7 +236,8 @@ defmodule Padi.CLI.NLPParser do
     Examples:
       • "run the tests" → runs project-specific tests
       • "build the project" → compiles the project
-      • "install dependencies" → installs project dependencies
+      • "add multiplication functionality" → implements multiply function
+      • "what functions do we have?" → shows available functions
     """
   end
 
@@ -206,7 +264,6 @@ defmodule Padi.CLI.NLPParser do
 
   defp extract_args(input, intent) do
     # Extract specific arguments from the input
-    # For now, we'll use simple keyword extraction
     case intent do
       :test ->
         extract_test_args(input)
@@ -217,8 +274,62 @@ defmodule Padi.CLI.NLPParser do
       :run ->
         extract_run_args(input)
 
+      # For code change intents, extract the user request
+      intent when intent in [:add_feature, :fix_bug, :refactor, :modify_code, :query_codebase] ->
+        extract_code_change_request(input, intent)
+
       _ ->
         []
+    end
+  end
+
+  defp extract_code_change_request(input, intent) do
+    # Extract the user's request by removing the intent keywords
+    intent_patterns = %{
+      add_feature: [
+        ~r/add\s+(?:a\s+)?(?:new\s+)?(?:function|feature|capability|method)\s+(?:of\s+|called\s+)?/i,
+        ~r/implement\s+(?:a\s+)?(?:new\s+)?(?:function|feature|capability)\s+(?:of\s+|called\s+)?/i,
+        ~r/create\s+(?:a\s+)?(?:new\s+)?(?:function|method)\s+(?:of\s+|called\s+)?/i,
+        ~r/add\s+/i,
+        ~r/can\s+(?:you\s+)?(?:you\s+)?(?:add|create|implement)\s+/i
+      ],
+      fix_bug: [
+        ~r/fix\s+(?:the\s+)?(?:bug|issue|problem|error)\s+(?:in\s+)?/i,
+        ~r/repair\s+(?:the\s+)?(?:bug|issue)\s+(?:in\s+)?/i,
+        ~r/(?:debug|resolve)\s+(?:the\s+)?(?:issue|problem)\s+(?:in\s+)?/i
+      ],
+      refactor: [
+        ~r/refactor\s+(?:the\s+)?/i,
+        ~r/restructure\s+(?:the\s+)?/i,
+        ~r/clean\s+up\s+(?:the\s+)?/i
+      ],
+      modify_code: [
+        ~r/change\s+(?:the\s+)?/i,
+        ~r/update\s+(?:the\s+)?/i,
+        ~r/modify\s+(?:the\s+)?/i
+      ],
+      query_codebase: [
+        ~r/what\s+(?:functions|capabilities|features)\s+(?:do\s+)?(?:we\s+)?(?:have|exist)\s+/i,
+        ~r/show\s+me\s+(?:what\s+)?(?:we\s+)?have\s+/i,
+        ~r/tell\s+me\s+about\s+(?:the\s+)?/i
+      ]
+    }
+
+    patterns = Map.get(intent_patterns, intent, [])
+
+    # Try to remove intent keywords and get the actual request
+    request = Enum.reduce(patterns, input, fn pattern, acc ->
+      String.replace(acc, pattern, "")
+    end)
+
+    # Clean up the request
+    request = String.trim(request)
+
+    # If request is empty, return the full input
+    if request == "" do
+      [input]
+    else
+      [request]
     end
   end
 
