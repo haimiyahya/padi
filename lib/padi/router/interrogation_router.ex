@@ -164,6 +164,16 @@ defmodule Padi.Router.InterrogationRouter do
             }
 
             {:ok, Padi.Protocol.Messages.response_envelope(id, response)}
+
+          {:error, _reason} ->
+            # Vector search failed - treat as new feature
+            response = %{
+              "status" => "new_feature",
+              "recommendation" => "Create new functionality (vector search unavailable)",
+              "suggested_location" => suggest_location(intent)
+            }
+
+            {:ok, Padi.Protocol.Messages.response_envelope(id, response)}
         end
 
       {:error, _reason} ->
@@ -236,17 +246,28 @@ defmodule Padi.Router.InterrogationRouter do
   defp handle_get_status(params, id) do
     request_id = Map.get(params, "request_id")
 
-    case CodeWriter.get_status(request_id) do
-      {:ok, status} ->
-        response = Map.put(status, :request_id, request_id)
-        {:ok, Padi.Protocol.Messages.response_envelope(id, response)}
+    # Handle missing request_id gracefully
+    if is_binary(request_id) and request_id != "" do
+      case CodeWriter.get_status(request_id) do
+        {:ok, status} ->
+          response = Map.put(status, :request_id, request_id)
+          {:ok, Padi.Protocol.Messages.response_envelope(id, response)}
 
-      {:error, :not_found} ->
-        {:ok, Padi.Protocol.Messages.error_envelope(
-          id,
-          -32002,
-          "Request not found"
-        )}
+        {:error, :not_found} ->
+          {:ok, Padi.Protocol.Messages.error_envelope(
+            id,
+            -32002,
+            "Request not found"
+          )}
+      end
+    else
+      # Return general system status when no specific request_id provided
+      general_status = %{
+        status: :running,
+        request_id: nil,
+        system_info: get_system_info()
+      }
+      {:ok, Padi.Protocol.Messages.response_envelope(id, general_status)}
     end
   end
 
@@ -417,5 +438,14 @@ defmodule Padi.Router.InterrogationRouter do
     end
 
     base <> where <> " RETURN n LIMIT 100"
+  end
+
+  defp get_system_info() do
+    # Return basic system information
+    %{
+      uptime: :erlang.monotonic_time(:millisecond),
+      total_requests: CodeWriter.stats().total_submitted,
+      system_time: System.system_time(:millisecond)
+    }
   end
 end

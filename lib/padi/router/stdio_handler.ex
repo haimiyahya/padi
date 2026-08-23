@@ -52,6 +52,39 @@ defmodule Padi.Router.StdioHandler do
     GenServer.call(__MODULE__, :serve)
   end
 
+  @doc """
+  Parse a JSON-RPC request string into a request struct.
+  """
+  def parse_request(json_string) when is_binary(json_string) do
+    try do
+      with {:ok, data} <- Jason.decode(json_string),
+           {:ok, request} <- Padi.Protocol.Messages.parse_request(data) do
+        {:ok, request}
+      else
+        {:error, _} = error -> {:error, error}
+        error -> {:error, error}
+      end
+    rescue
+      _ -> {:error, :parse_error}
+    end
+  end
+
+  @doc """
+  Format a response map into a JSON-RPC response string.
+  """
+  def format_response(id, result) when is_map(result) do
+    response = Padi.Protocol.Messages.response_envelope(id, result)
+    Jason.encode!(response)
+  end
+
+  @doc """
+  Format an error into a JSON-RPC error response string.
+  """
+  def format_error(id, code, message, data \\ nil) do
+    error = Padi.Protocol.Messages.error_envelope(id, code, message, data)
+    Jason.encode!(error)
+  end
+
   # Server Callbacks
 
   @impl true
