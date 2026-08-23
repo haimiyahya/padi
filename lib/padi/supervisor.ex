@@ -18,6 +18,9 @@ defmodule Padi.Supervisor do
   @impl true
   def init(_init_arg) do
     children = [
+      # Phase 0: Persistence Layer (must start first for state loading)
+      {Padi.Storage.PersistenceManager, []},
+
       # Phase 1: Storage & Cache Tier
       {Padi.Storage.EtsRegistry, []},
       {Padi.Storage.LadybugNif, [db_path: Padi.Ramdisk.path() <> "/graph.lbug"]},
@@ -35,6 +38,8 @@ defmodule Padi.Supervisor do
       {Padi.Router.InterrogationRouter, []}
     ]
 
-    Supervisor.init(children, strategy: :one_for_one)
+    # Use one_for_one strategy - if a child crashes, it will be restarted
+    opts = [strategy: :one_for_one, name: Padi.Supervisor]
+    Supervisor.init(children, opts)
   end
 end
