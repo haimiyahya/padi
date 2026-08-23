@@ -51,16 +51,7 @@ jobs:
           mix local.rebar --force
           mix deps.get
 
-      - name: Compile NIFs
-        run: |
-          mix rustler.crates --all --release
-
-      - name: Copy NIFs to priv/native
-        run: |
-          mkdir -p priv/native
-          cp native/*/target/release/lib*.so priv/native/ || echo "No NIFs found to copy"
-
-      - name: Compile project
+      - name: Compile project and NIFs
         run: mix compile
 
       - name: Run tests
