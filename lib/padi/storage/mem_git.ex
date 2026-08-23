@@ -10,12 +10,22 @@ defmodule Padi.Storage.MemGit do
   - File history tracking
   - Lineage tracking for AST nodes
   - Comment-stripped diff extraction for historical debt analysis
+  - **Async persistence with 10-second periodic flushing**
+
+  Persistence:
+  - Automatic flushing every 10 seconds when data has changed
+  - Efficient binary serialization with zlib compression
+  - Background load on startup (non-blocking)
+  - Dirty flag tracking to avoid unnecessary disk writes
 
   This is the fourth tier of the 4-tier knowledge engine.
   """
 
   use GenServer
   require Logger
+
+  @flush_interval_ms 10_000  # 10 seconds
+  @memgit_file "memgit_state.bin"
 
   # Public API
 
@@ -89,19 +99,54 @@ defmodule Padi.Storage.MemGit do
     GenServer.call(__MODULE__, :stats)
   end
 
+  @doc """
+  Force immediate flush to durable storage.
+  """
+  def force_flush do
+    GenServer.call(__MODULE__, :force_flush)
+  end
+
+  @doc """
+  Get MemGit persistence statistics.
+  """
+  def get_persistence_stats do
+    GenServer.call(__MODULE__, :get_persistence_stats)
+  end
+
   # Server Callbacks
 
   @impl true
   def init(_opts) do
+    # Initialize state with persistence fields
     state = %{
       repo_path: nil,
       commits: %{},          # hash -> commit metadata
       files: %{},            # file_path -> list of commit hashes
       node_lineage: %{},    # ast_node_id -> list of commit hashes
-      is_parsed: false
+      is_parsed: false,
+      # Persistence fields
+      dirty: false,
+      flush_timer: nil,
+      persistence_dir: get_persistence_dir(),
+      stats: %{
+        total_flushes: 0,
+        last_flush_time: nil,
+        last_flush_size: 0,
+        total_bytes_written: 0,
+        load_time: nil
+      }
     }
 
-    Logger.debug("MemGit initialized")
+    # Ensure persistence directory exists
+    File.mkdir_p!(state.persistence_dir)
+
+    # Start periodic flush timer
+    schedule_flush()
+
+    # Load persisted state asynchronously (don't block startup)
+    send(self(), :load_persisted_state)
+
+    Logger.info("MemGit initialized with 10-second periodic flushing")
     {:ok, state}
   end
 
@@ -119,10 +164,11 @@ defmodule Padi.Storage.MemGit do
               commits: parsed_data.commits,
               files: parsed_data.files,
               node_lineage: %{},
-              is_parsed: true
+              is_parsed: true,
+              dirty: true  # Mark as dirty for flushing
             }
 
-            Logger.info("Parsed git repo at #{repo_path}: #{length(Map.keys(parsed_data.commits))} commits")
+            Logger.info("Parsed git repo at #{repo_path}: #{length(Map.keys(parsed_data.commits))} commits (marked for persistence)")
             {:reply, :ok, new_state}
 
           {:error, reason} ->
@@ -218,9 +264,74 @@ defmodule Padi.Storage.MemGit do
       is_parsed: state.is_parsed,
       total_commits: length(Map.keys(state.commits)),
       total_files: length(Map.keys(state.files)),
-      tracked_nodes: length(Map.keys(state.node_lineage))
+      tracked_nodes: length(Map.keys(state.node_lineage)),
+      dirty: state.dirty
     }
     {:reply, stats, state}
+  end
+
+  @impl true
+  def handle_call(:force_flush, _from, state) do
+    case do_flush(state) do
+      {:ok, bytes_written, new_state} ->
+        Logger.info("MemGit force flush completed: #{bytes_written} bytes written")
+        {:reply, :ok, new_state}
+
+      {:error, reason} ->
+        Logger.error("MemGit force flush failed: #{inspect(reason)}")
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_call(:get_persistence_stats, _from, state) do
+    full_stats = Map.merge(state.stats, %{
+      dirty: state.dirty,
+      current_data_size: estimate_data_size(state)
+    })
+    {:reply, full_stats, state}
+  end
+
+  @impl true
+  def handle_info(:flush, state) do
+    # Only flush if dirty (has changes)
+    if state.dirty do
+      case do_flush(state) do
+        {:ok, bytes_written, new_state} ->
+          Logger.debug("MemGit periodic flush: #{bytes_written} bytes written")
+          schedule_flush()  # Reschedule
+          {:noreply, new_state}
+
+        {:error, reason} ->
+          Logger.warning("MemGit periodic flush failed: #{inspect(reason)}")
+          schedule_flush()  # Reschedule anyway
+          {:noreply, state}
+      end
+    else
+      Logger.debug("MemGit periodic flush: no changes, skipping")
+      schedule_flush()  # Reschedule
+      {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info(:load_persisted_state, state) do
+    case load_persisted_state(state) do
+      {:ok, loaded_state} ->
+        Logger.info("MemGit loaded persisted state from disk")
+        schedule_flush()
+        {:noreply, loaded_state}
+
+      {:error, :no_state} ->
+        Logger.debug("MemGit: no persisted state found (first run)")
+        schedule_flush()
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning("MemGit failed to load persisted state: #{inspect(reason)}")
+        schedule_flush()
+        {:noreply, state}
+    end
   end
 
   # Private helpers
@@ -290,5 +401,142 @@ defmodule Padi.Storage.MemGit do
       {output, 0} -> {:ok, output}
       {output, _exit_code} -> {:error, output}
     end
+  end
+
+  # Persistence functions
+
+  defp schedule_flush do
+    Process.send_after(self(), :flush, @flush_interval_ms)
+  end
+
+  defp do_flush(state) do
+    start_time = System.monotonic_time(:millisecond)
+
+    try do
+      # Prepare data for serialization (exclude non-serializable fields)
+      data_to_save = %{
+        repo_path: state.repo_path,
+        commits: state.commits,
+        files: state.files,
+        node_lineage: state.node_lineage,
+        is_parsed: state.is_parsed,
+        saved_at: System.system_time(:millisecond)
+      }
+
+      # Serialize to binary
+      binary_data = :erlang.term_to_binary(data_to_save)
+
+      # Compress using zlib
+      compressed_data = :zlib.compress(binary_data)
+
+      # Write atomically
+      file_path = Path.join([state.persistence_dir, @memgit_file])
+      tmp_file = file_path <> ".tmp"
+      File.write!(tmp_file, compressed_data, [:binary])
+      File.rename!(tmp_file, file_path)
+
+      duration = System.monotonic_time(:millisecond) - start_time
+      bytes_written = byte_size(compressed_data)
+
+      # Update stats and clear dirty flag
+      new_state = %{state |
+        dirty: false,
+        stats: %{state.stats |
+          total_flushes: state.stats.total_flushes + 1,
+          last_flush_time: System.system_time(:millisecond),
+          last_flush_size: bytes_written,
+          total_bytes_written: state.stats.total_bytes_written + bytes_written
+        }
+      }
+
+      Logger.debug("MemGit flushed in #{duration}ms (#{bytes_written} bytes compressed)")
+      {:ok, bytes_written, new_state}
+
+    rescue
+      e -> {:error, {:exception, e}}
+    end
+  end
+
+  defp load_persisted_state(state) do
+    file_path = Path.join([state.persistence_dir, @memgit_file])
+
+    case File.exists?(file_path) do
+      false ->
+        {:error, :no_state}
+
+      true ->
+        try do
+          start_time = System.monotonic_time(:millisecond)
+
+          # Read compressed data
+          compressed_data = File.read!(file_path)
+
+          # Decompress
+          case :zlib.uncompress(compressed_data) do
+            uncompressed_data when is_binary(uncompressed_data) ->
+              # Deserialize
+              loaded_data = :erlang.binary_to_term(uncompressed_data)
+
+              duration = System.monotonic_time(:millisecond) - start_time
+
+              # Merge loaded data with current state
+              loaded_state = %{state |
+                repo_path: loaded_data.repo_path,
+                commits: Map.merge(state.commits, loaded_data.commits),
+                files: Map.merge(state.files, loaded_data.files),
+                node_lineage: Map.merge(state.node_lineage, loaded_data.node_lineage),
+                is_parsed: loaded_data.is_parsed,
+                dirty: false,  # Loaded state is clean
+                stats: %{state.stats |
+                  load_time: duration
+                }
+              }
+
+              Logger.info("MemGit loaded #{length(Map.keys(loaded_data.commits))} commits in #{duration}ms")
+              {:ok, loaded_state}
+
+            {:error, _} ->
+              # Try direct deserialization (not compressed)
+              try do
+                loaded_data = :erlang.binary_to_term(compressed_data)
+
+                loaded_state = %{state |
+                  repo_path: loaded_data.repo_path,
+                  commits: Map.merge(state.commits, loaded_data.commits),
+                  files: Map.merge(state.files, loaded_data.files),
+                  node_lineage: Map.merge(state.node_lineage, loaded_data.node_lineage),
+                  is_parsed: loaded_data.is_parsed,
+                  dirty: false,
+                  stats: %{state.stats |
+                    load_time: System.monotonic_time(:millisecond) - start_time
+                  }
+                }
+
+                {:ok, loaded_state}
+              rescue
+                _ -> {:error, :decompress_failed}
+              end
+          end
+
+        rescue
+          e -> {:error, {:load_exception, e}}
+        end
+    end
+  end
+
+  defp get_persistence_dir do
+    case System.get_env("PADI_PERSISTENCE_DIR") do
+      nil -> Path.join([System.user_home!(), ".padi", "memgit"])
+      path -> Path.join([path, "memgit"])
+    end
+  end
+
+  defp estimate_data_size(state) do
+    # Rough estimate of in-memory data size
+    commits_size = state.commits |> :erlang.term_to_binary() |> byte_size()
+    files_size = state.files |> :erlang.term_to_binary() |> byte_size()
+    lineage_size = state.node_lineage |> :erlang.term_to_binary() |> byte_size()
+
+    commits_size + files_size + lineage_size
   end
 end
