@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PadiPolicyConfig",
+  "version": "1.0.0",
+  "description": "Anti-pattern policy configuration for Padi AI Coding Harness",
+  "anti_patterns": [
+    {
+      "id": "AP-001",
+      "name": "no_raw_crypto_calls",
+      "target_ast_pattern": "CallExpression[callee=':crypto.hash']",
+      "action": "reject",
+      "reason": "Direct calls to `:crypto.hash/2` are insecure without proper configuration. Use the CryptoWrapper library which handles key derivation and algorithm selection securely.",
+      "recommendation": "Replace with CryptoWrapper.hash(:sha3, password)"
+    },
+    {
+      "id": "AP-002",
+      "name": "no_hardcoded_secrets",
+      "target_ast_pattern": "Variable[name=/password|api_key|secret/i] ~ Literal",
+      "action": "reject",
+      "reason": "Hardcoded secrets in source code are a major security vulnerability. They will be exposed in version control.",
+      "recommendation": "Use Application.get_env/3 or runtime configuration for secrets."
+    },
+    {
+      "id": "AP-003",
+      "name": "no_sql_string_concatenation",
+      "target_ast_pattern": "CallExpression[callee='~s' || '++'] ~ CallExpression[callee='execute']",
+      "action": "reject",
+      "reason": "String concatenation in SQL queries leads to SQL injection vulnerabilities.",
+      "recommendation": "Use parameterized queries or the query builder."
+    },
+    {
+      "id": "AP-004",
+      "name": "avoid_ambiguous_function_names",
+      "target_ast_pattern": "FunctionDefinition[name=/data|process|handle/i][arity=1]",
+      "action": "warn",
+      "reason": "Generic function names make code harder to understand and maintain.",
+      "recommendation": "Use descriptive names that indicate what the function actually does."
+    },
+    {
+      "id": "AP-005",
+      "name": "no_empty_catch_blocks",
+      "target_ast_pattern": "TryExpression > CatchBlock[body=[]]",
+      "action": "warn",
+      "reason": "Empty catch blocks silently swallow errors, making debugging difficult.",
+      "recommendation": "At minimum, log the error before re-raising or handling."
+    },
+    {
+      "id": "AP-006",
+      "name": "prefer_pattern_matching_over_if",
+      "target_ast_pattern": "IfExpression > Condition ~ IsTypeCheck",
+      "action": "warn",
+      "reason": "Pattern matching is more idiomatic and safer than type checking with if.",
+      "recommendation": "Use case/cond or pattern matching instead."
+    },
+    {
+      "id": "AP-007",
+      "name": "no_direct_gen_server_call_in_hot_path",
+      "target_ast_pattern": "CallExpression[callee='GenServer.call'] inside FunctionDefinition[marked='hot_path']",
+      "action": "warn",
+      "reason": "Synchronous GenServer calls in hot paths can cause performance bottlenecks.",
+      "recommendation": "Consider using cast, handle_info, or async_request."
+    },
+    {
+      "id": "AP-008",
+      "name": "avoid_large_functions",
+      "target_ast_pattern": "FunctionDefinition[end_line - start_line > 50]",
+      "action": "warn",
+      "reason": "Functions longer than 50 lines are difficult to test, understand, and maintain.",
+      "recommendation": "Break down into smaller, focused functions."
+    },
+    {
+      "id": "AP-009",
+      "name": "no_debug_prints_in_production",
+      "target_ast_pattern": "CallExpression[callee='IO.inspect' || 'dbg' || 'IO.puts']",
+      "action": "reject",
+      "reason": "Debug print statements should not be committed to production code.",
+      "recommendation": "Use Logger.debug/1 for structured logging that can be filtered."
+    },
+    {
+      "id": "AP-010",
+      "name": "prefer_struct_over_map_for_known_shape",
+      "target_ast_pattern": "Variable[type='Map'] ~ RepeatedAccessPattern[count > 3]",
+      "action": "warn",
+      "reason": "For known data shapes, structs provide compile-time guarantees and better performance.",
+      "recommendation": "Define a struct with defstruct instead of using maps."
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+# The directory Mix will write compiled artifacts to.
+/_build/
+
+# If you run "mix test --cover", coverage assets are generated in /cover.
+/cover/
+
+# The directory Mix will write your artifacts into (e.g. the generated
+# .app file or .beam files).
+/deps/
+
+# The directory Mix downloads your dependencies sources to.
+/deps/
+
+# Temporary files, for example, from tests.
+/tmp/
+
+# NIF compiled artifacts
+native/*/target/
+native/*/src/*.o
+native/*/src/*.so
+native/*/src/*.dylib
+priv/native/lib/*
+
+# Ramdisk workspace
+ramdisk/
+/tmp/padi_ramdisk*/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+log/
+
+# Database files
+*.lbug
+*.db
+
+# Test coverage
+/cover/
+*.cover
+
+# Rust NIF specific
+Cargo.lock
+*.so
+*.dylib
+*.dll
+
+# Additional Elixir
+*.ez
+erl_crash.dump
+
+# Keep directory structure
+!.gitkeep
+
+# Documentation (keep README, ignore generated docs)
+/doc/
+
+# Backup files
+*.backup
+*.bak
+*.orig
